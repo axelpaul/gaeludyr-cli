@@ -324,6 +324,11 @@ async function main(): Promise<void> {
 	}
 
 	switch (command) {
+		case "serve": {
+			const { serve } = await import("./mcp/server.ts");
+			await serve();
+			break;
+		}
 		case "login": {
 			const phone = getFlag("phone");
 			if (!phone) outputError("--phone is required");
