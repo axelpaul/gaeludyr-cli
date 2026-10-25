@@ -1,140 +1,218 @@
 # gaeludyr-cli
 
-Command-line client for [gaeludyr.is](https://www.gaeludyr.is), an Icelandic pet supply store. Built with Bun + TypeScript. Works for humans (pretty terminal output) and for agents (JSON when piped, plus a machine-readable command schema via `gaeludyr help --json`).
+Command-line client and MCP server for [Gæludýr.is](https://www.gaeludyr.is), an Icelandic pet-supply shop: search the catalogue, check stock, manage a cart, see your orders and shipping options.
+
+> Unofficial — not affiliated with Gæludýr.is. It uses the shop's undocumented web APIs, which can change without notice.
 
 ## Install
 
-```bash
-git clone https://github.com/axelpaul/gaeludyr-cli
-cd gaeludyr-cli
-bun install
-bun link              # makes `gaeludyr` globally available
+Requires [Bun](https://bun.sh) ≥ 1.1.
+
+```sh
+bun add -g github:axelpaul/gaeludyr-cli        # install
+bun add -g github:axelpaul/gaeludyr-cli        # update (re-run; pulls the latest default branch)
+bun remove -g gaeludyr-cli                     # uninstall
 ```
 
-Requires [Bun](https://bun.sh).
+This puts `gaeludyr` in `~/.bun/bin`. Check with `gaeludyr --version`.
 
-To build a standalone binary:
+No Bun? Download a prebuilt binary (`gaeludyr-<os>-<arch>`, with `SHA256SUMS`) from the [Releases page](https://github.com/axelpaul/gaeludyr-cli/releases), make it executable and put it on your `PATH`.
 
-```bash
-bun run build         # produces ./gaeludyr
+## Authentication
+
+Catalogue search (`search`) needs no login. Your profile, orders and order detail need a gaeludyr.is session. Product, postcode, Dropp, cart totals, shipping and payment-method lookups send the session if you have one; they may also work without it.
+
+Log in with Auðkenni (Icelandic eID). The shop's own backend proxies the request to Auðkenni:
+
+```sh
+gaeludyr login --phone <7-digit mobile>          # SIM-based Auðkenni (default)
+gaeludyr login --phone <mobile> --type App --ssn <kennitala>   # Auðkennisappið
+gaeludyr me                                      # verify
+gaeludyr logout
 ```
 
-## Quick start
+Confirm the request on your phone. The resulting iron-sealed `kk_fe` cookie is saved to `session.json` in the config directory (mode 0600) and replayed on authenticated requests. For headless use you can instead set `GAELUDYR_KK_FE` to the cookie value.
 
-```bash
-# 1. Log in via Audkenni Sim (BFF-proxied through gaeludyr.is)
-gaeludyr login --phone <7-digit-mobile>
-#   → confirm the request on your phone, then your session cookie is cached
+## CLI usage
 
-# 2. Verify
-gaeludyr me
+```sh
+gaeludyr search "happy cat" --in-stock           # Typesense catalogue search
+gaeludyr search --category kettir --brand happy-cat --per-page 50
+gaeludyr product <slug>                          # stock, price, sale price, max qty
 
-# 3. Search the catalog (Typesense — no auth required)
-gaeludyr search "happy cat" --in-stock
+gaeludyr cart                                    # show cart with server-computed totals
+gaeludyr cart add 46685 --qty 2                  # by product ID
+gaeludyr cart add "happy cat lachs 10kg"         # or fuzzy name (see --min-score)
+gaeludyr cart remove 46685
+gaeludyr cart set --items '[{"id":46685,"qty":2},{"id":12345,"qty":1}]'
+echo '[{"id":46685,"qty":2}]' | gaeludyr cart set
+gaeludyr cart coupon SUMAR10                     # empty code removes it
+gaeludyr cart clear
 
-# 4. Add items to the cart (by product ID, slug, or fuzzy name)
-gaeludyr cart add 46685 --qty 2
-gaeludyr cart add "happy cat lachs 10kg"
+gaeludyr orders --page 1
+gaeludyr order 12345
 
-# 5. Review cart with totals
-gaeludyr cart
-
-# 6. List past orders
-gaeludyr orders
-gaeludyr order 62331
-
-# 7. Check what shipping options apply
-gaeludyr checkout shipping --postcode 104 --street "<street address>" --city Reykjavík
+gaeludyr checkout shipping --postcode 101 --street "Dæmigata 1" --city Reykjavík
 gaeludyr checkout payment
+gaeludyr postcode 104
+gaeludyr dropp --near kringlan
 ```
-
-## Commands
 
 | Command | Description |
 |---|---|
-| `login --phone <NNNNNNN> [--ssn <kt>] [--type Sim\|App\|Card]` | Audkenni auth flow. Caches `kk_fe` cookie under `~/.gaeludyr/session.json` |
-| `logout` | Clear cached session |
-| `me` | Show authenticated user profile (addresses, kennitala, preferred shipping) |
-| `search <query> [--category <slug>] [--brand <slug>] [--in-stock] [--page N] [--per-page N]` | Typesense catalog search |
-| `product <slug>` | Stock + pricing for a product |
-| `cart` | Show current cart with server-enriched line items + totals |
-| `cart add <id\|slug\|name> [--qty N] [--min-score N]` | Add item. Numeric → product ID; otherwise fuzzy-matched via Typesense. `--min-score` rejects low-confidence matches (default 5) |
+| `login --phone <NNNNNNN> [--ssn <kt>] [--type Sim\|App\|Card]` | Auðkenni login; caches the session cookie |
+| `logout` | Clear the cached session |
+| `me` | Your profile (addresses, kennitala, preferred shipping) |
+| `search [<query>] [--category <slug>] [--brand <slug>] [--in-stock] [--page N] [--per-page N]` | Catalogue search |
+| `product <slug>` | Stock and pricing for a product |
+| `cart [show]` | Cart with server-enriched line items and totals |
+| `cart add <id\|slug\|name> [--qty N] [--min-score N]` | Add item. Numeric means product ID; otherwise fuzzy-matched. `--min-score` (default 5) rejects weak matches |
 | `cart remove <id\|slug\|name> [--min-score N]` | Remove item |
-| `cart set --items <json>` | Batch replace the entire cart. Pass JSON inline or pipe via stdin. See below. |
+| `cart set --items <json> [--coupon <code>]` | Replace the whole cart (JSON inline or on stdin) |
 | `cart clear` | Empty the cart |
-| `cart coupon <code>` | Apply (or pass empty to remove) a coupon |
+| `cart coupon <code>` | Apply (or with an empty code, remove) a coupon |
 | `orders [--page N]` | List your orders |
-| `order <id>` | Order detail (via Next.js SSR data route — auto-discovers build ID) |
-| `checkout shipping --postcode <NNN> --street <addr> --city <name> [--country IS] [--ssn <kt>]` | Compute available shipping methods for your current cart + destination |
-| `checkout payment` | List available payment methods |
-| `postcode <NNN>` | Look up city/street info |
-| `dropp [--near <substring>]` | List Dropp parcel pickup locations |
+| `order <id>` | Order detail |
+| `checkout shipping --postcode <NNN> --street <addr> --city <name> [--country IS] [--ssn <kt>]` | Shipping methods and costs for the current cart |
+| `checkout payment` | List payment methods |
+| `postcode <NNN>` | Postcode lookup |
+| `dropp [--near <text>]` | Dropp parcel pickup locations |
+| `serve` | Start the MCP server on stdio (`mcp` is an alias) |
 
-Global flags: `--json` forces JSON output, `--pretty` forces human-readable, `--help` shows usage.
+Global flags: `--json` forces JSON output, `--pretty` forces human-readable, `--help`, `--version`.
 
-## Auth
+The CLI cannot place orders or pay; `checkout` only computes shipping options and lists payment methods.
 
-gaeludyr.is uses **Audkenni** (Icelandic eID) via a BFF — the front-end talks to `/api/auth/start` and `/api/auth/poll` on gaeludyr's own domain, which proxies to Audkenni server-side. The result is an iron-sealed session cookie (`kk_fe=Fe26.2*…`) that the CLI stores in `~/.gaeludyr/session.json` and replays on every authenticated request.
+### Agent / scripting use
 
-Default auth type is `Sim` (SIM-based Audkenni — confirm on your phone). For `App` (Auðkennisappið) or `Card` (smart card), supply `--ssn <kennitala>` as well.
+Output is JSON whenever stdout isn't a TTY. Errors are JSON on stderr with exit code 1.
 
-## Agent / scripting use
+`gaeludyr help --json` returns a typed catalogue of every command, argument and flag (`type`, `required`, `enum`, `default`), enough to register the CLI as a function-calling tool.
 
-JSON is the primary interface. Output is JSON whenever stdout isn't a TTY. Errors are JSON in JSON mode too, written to stderr with exit code 1. Each command supports `--json` and `--pretty` to force a mode explicitly.
-
-**Typed command schema** — `gaeludyr help --json` returns a structured catalog of every command, argument, and flag. Each arg has a `type` (`string`/`integer`/`boolean`), `required` flag, optional `enum` (e.g. `--type` is `["Sim", "App", "Card"]`), and `default` value. Sufficient for auto-registering this CLI as a function-calling tool.
-
-```bash
+```sh
 gaeludyr help --json | jq '.commands[] | {name, args: [.args[] | {name, type, required}]}'
 gaeludyr search "fish" --json | jq '.products[0]'
 gaeludyr orders --json | jq '.orders | map(.id)'
 ```
 
-**Fuzzy-match confidence** — When `cart add` resolves a free-text name through Typesense, the JSON response includes the chosen match with its score and the runner-up alternatives, so an agent can detect low-confidence selections:
+**Fuzzy-match confidence.** When `cart add` resolves a name through search, the JSON response includes the chosen match, its score and runner-up alternatives:
 
-```bash
+```sh
 gaeludyr cart add "happy cat lachs 10kg" --json | jq '.match'
-# {
-#   "resolution": "fuzzy",
-#   "query": "happy cat lachs 10kg",
-#   "matched": { "id": "...", "name": "...", "slug": "...", "score": 65 },
-#   "alternatives": [ { "id": "...", "score": 32 }, ... ]
-# }
+# { "resolution": "fuzzy", "query": "...", "matched": { "id": "...", "score": 65 }, "alternatives": [...] }
 ```
 
-Tighten the threshold with `--min-score N` — anything below it is rejected with an error listing the top candidates, so the agent can pick one by exact ID instead.
+Raise `--min-score` to be stricter; anything below it is rejected with the top candidates listed so you can retry by exact ID.
 
-**Batch cart mutations** — `cart set` replaces the entire cart in a single round-trip. Useful for agents assembling an order from N items without N round-trips:
+**Batch cart.** `cart set` replaces the cart in one round-trip. Items may be `{id, qty}` or `{productId, quantity}`.
 
-```bash
-gaeludyr cart set --items '[{"id":46685,"qty":2},{"id":12345,"qty":1}]' --json
-# or pipe:
-echo '[{"id":46685,"qty":2}]' | gaeludyr cart set --json
+## MCP server
+
+`gaeludyr serve` runs a Model Context Protocol server on stdio. It uses the same library code as the CLI and shares its session and cart files, so you can log in and fill a cart from the terminal and read it from your assistant (or the other way round).
+
+| Tool | Access | Description |
+|---|---|---|
+| `search` | read | Search the public catalogue by query, category and/or brand |
+| `product` | read | Stock and price for a product slug |
+| `postcode` | read | Postcode lookup |
+| `dropp_locations` | read | Dropp pickup locations, optional name/address filter |
+| `me` | read (login) | Your profile: name, addresses, kennitala, preferred shipping |
+| `orders` | read (login) | List your orders |
+| `order` | read (login) | Detail for one order |
+| `cart_view` | read | Current cart with server-computed totals |
+| `checkout_shipping` | read | Shipping methods and costs for the cart to a destination |
+| `payment_methods` | read | Payment methods offered at checkout |
+| `cart_add` | write | Add a product by ID, slug or name |
+| `cart_remove` | write | Remove a product |
+| `cart_set` | write | Replace the whole cart |
+| `cart_clear` | write | Empty the cart |
+| `cart_coupon` | write | Apply or remove a coupon |
+
+**Writes are off by default.** The `cart_*` mutation tools are only registered when the server is started with `GAELUDYR_MCP_ENABLE_WRITES=1`, and each call must also pass `"confirm": true`. Cart changes only touch your local cart file; gaeludyr.is just computes totals. Nothing is ordered or charged.
+
+Not exposed over MCP:
+- `login` / `logout`: login needs a phone number and a confirmation on your phone. Run `gaeludyr login` in a terminal; the MCP server picks up the saved session.
+- Placing orders and paying: the CLI doesn't do this either. If it is ever added, it should stay CLI-only, because an order and card payment cannot be undone from here.
+
+### Claude Code
+
+```sh
+claude mcp add gaeludyr -- gaeludyr serve
+# with cart writes:
+claude mcp add gaeludyr -e GAELUDYR_MCP_ENABLE_WRITES=1 -- gaeludyr serve
 ```
 
-Accepted shapes per item: `{id, qty}` or `{productId, quantity}`. The CLI also writes the same state to `~/.gaeludyr/cart.json` so a subsequent `gaeludyr cart` is consistent.
+### Claude Desktop, Cursor and other JSON-configured clients
 
-## Files
+```json
+{
+  "mcpServers": {
+    "gaeludyr": {
+      "command": "gaeludyr",
+      "args": ["serve"],
+      "env": { "GAELUDYR_MCP_ENABLE_WRITES": "1" }
+    }
+  }
+}
+```
+
+Leave out `env` for read-only. GUI apps often don't have `~/.bun/bin` on their `PATH`; if the server fails to start, use the absolute path from `which gaeludyr` as `command`.
+
+## Configuration
+
+| Variable | Description |
+|---|---|
+| `GAELUDYR_MCP_ENABLE_WRITES` | `1` registers the cart mutation tools in the MCP server |
+| `GAELUDYR_KK_FE` | Session cookie value to use instead of the saved login |
+| `GAELUDYR_CONFIG_DIR` | Override the config directory |
+| `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` | Standard base directories |
+
+Files:
+- `$XDG_CONFIG_HOME/gaeludyr-cli/` (default `~/.config/gaeludyr-cli/`): `session.json` (login cookie, mode 0600) and `cart.json` (the local cart).
+- `$XDG_CACHE_HOME/gaeludyr-cli/buildid.json` (default `~/.cache/...`): cached Next.js build ID.
+- Versions before 0.2 used `~/.gaeludyr/`; it is still read as a fallback, so existing logins keep working.
+
+### How the site works
+
+- **Auth:** the front end calls `/api/auth/start` and `/api/auth/poll` on gaeludyr.is, which proxy to Auðkenni. Success sets the `kk_fe` cookie.
+- **Search:** Typesense Cloud `/multi_search`, using the public search-only key embedded in the site's JavaScript.
+- **Cart:** stateless on the server. `POST /api/cart` takes the desired cart and returns line items and totals. The canonical cart is the local `cart.json`, re-POSTed on every change.
+- **Order detail:** comes from the Next.js SSR data route `/_next/data/{buildId}/is/minar-sidur/pantanir/{id}.json`. The build ID is scraped from `__NEXT_DATA__` on the homepage, cached for an hour and refreshed when a deploy rotates it.
+
+## Development
+
+```sh
+git clone https://github.com/axelpaul/gaeludyr-cli
+cd gaeludyr-cli
+bun install
+bun run check          # biome lint + tsc + bun test
+bun src/index.ts --help
+bun run build          # standalone ./gaeludyr binary
+```
 
 ```
 src/
-├── index.ts             # arg parsing + command routing + help schema
-├── commands/            # one module per command
+├── index.ts             # arg parsing, routing, help schema
+├── commands/            # CLI presentation, one module per command
+├── mcp/server.ts        # MCP tools (same lib code as the CLI)
 └── lib/
-    ├── types.ts         # API request/response shapes
-    ├── config.ts        # ~/.gaeludyr/ — session, cart, buildId cache
-    ├── output.ts        # TTY-aware JSON/pretty output
-    ├── auth-client.ts   # Audkenni start + poll loop, cookie aggregation
-    ├── client.ts        # Authenticated /api/* client (kk_fe cookie)
-    ├── typesense.ts     # Typesense Cloud /multi_search client
-    ├── nextjs.ts        # __NEXT_DATA__ build-ID discovery + SSR data fetch
-    └── fuzzy.ts         # Token-overlap product matching for `cart add`
+    ├── cart.ts          # cart operations shared by CLI and MCP
+    ├── checkout.ts      # shipping options
+    ├── orders.ts        # order list/detail
+    ├── client.ts        # gaeludyr.is /api/* client
+    ├── auth-client.ts   # Auðkenni start + poll
+    ├── typesense.ts     # catalogue search
+    ├── nextjs.ts        # build-ID discovery + SSR data fetch
+    ├── fuzzy.ts         # product name matching for `cart add`
+    ├── config.ts        # paths, session, cart, cache
+    ├── output.ts        # TTY-aware output
+    └── types.ts         # API shapes
 ```
 
-The cart is **stateless on the server**: `/api/cart` is a pure compute endpoint that takes a desired cart state and returns enriched line items + totals. The CLI keeps the canonical state at `~/.gaeludyr/cart.json` and POSTs it on every mutation.
+Releases: pushing a `v*` tag runs the checks, builds binaries for Linux, macOS and Windows, and attaches them to a GitHub release.
 
-Order detail comes from the Next.js SSR data route (`/_next/data/{buildId}/is/minar-sidur/pantanir/{id}.json`) since gaeludyr has no separate `/api/orders/{id}` endpoint. The CLI discovers the current `buildId` by parsing `<script id="__NEXT_DATA__">` from the homepage and caches it for an hour, refreshing automatically when the buildId rotates after a deploy.
+The API surface was reverse-engineered with [cli-maker](https://github.com/axelpaul/cli-maker), a Playwright-based traffic sniffer.
 
-## How this was built
+## License
 
-The API surface, request/response shapes, and auth flow were reverse-engineered with [cli-maker](https://github.com/axelpaul/cli-maker) — a Playwright-based tool that sniffs network traffic, deduplicates endpoints, and detects auth mechanisms. The resulting `gaeludyr_spec.json` was then fed to the `cli-creator` skill to scaffold this CLI.
+MIT
