@@ -1,41 +1,83 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { LocalCart, SessionCookies } from "./types.ts";
 
-export const CONFIG_DIR = join(homedir(), ".gaeludyr");
-export const SESSION_PATH = join(CONFIG_DIR, "session.json");
-export const CART_PATH = join(CONFIG_DIR, "cart.json");
-export const BUILDID_PATH = join(CONFIG_DIR, "buildid.json");
+// ─── Paths ──────────────────────────────────────────────────────
+// Resolved lazily so tests (and users) can point them elsewhere via env vars.
 
-function ensureDir(): void {
-	if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+const APP_DIR = "gaeludyr-cli";
+
+/** `$GAELUDYR_CONFIG_DIR`, else `$XDG_CONFIG_HOME/gaeludyr-cli`, else `~/.config/gaeludyr-cli`. */
+export function configDir(): string {
+	if (process.env.GAELUDYR_CONFIG_DIR) return process.env.GAELUDYR_CONFIG_DIR;
+	const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+	return join(base, APP_DIR);
 }
 
-// ─── Session (auth cookies) ─────────────────────────────────────
-
-export function saveSession(cookies: SessionCookies): void {
-	ensureDir();
-	writeFileSync(SESSION_PATH, JSON.stringify(cookies, null, 2));
+/** `$XDG_CACHE_HOME/gaeludyr-cli`, else `~/.cache/gaeludyr-cli`. */
+export function cacheDir(): string {
+	const base = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+	return join(base, APP_DIR);
 }
 
-export function loadSession(): SessionCookies | null {
-	if (!existsSync(SESSION_PATH)) return null;
+/** Pre-0.2 location; read as a fallback so existing logins keep working. */
+const legacyDir = () => join(homedir(), ".gaeludyr");
+
+export const sessionPath = () => join(configDir(), "session.json");
+export const cartPath = () => join(configDir(), "cart.json");
+export const buildIdPath = () => join(cacheDir(), "buildid.json");
+
+function ensureDir(dir: string): void {
+	if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+function readJson<T>(path: string): T | null {
+	if (!existsSync(path)) return null;
 	try {
-		return JSON.parse(readFileSync(SESSION_PATH, "utf-8")) as SessionCookies;
+		const text = readFileSync(path, "utf-8");
+		return text.trim() ? (JSON.parse(text) as T) : null;
 	} catch {
 		return null;
 	}
 }
 
+/** Read from the current location, falling back to the legacy ~/.gaeludyr dir. */
+function readWithLegacy<T>(path: string, file: string): T | null {
+	if (existsSync(path)) return readJson<T>(path);
+	if (process.env.GAELUDYR_CONFIG_DIR) return null;
+	return readJson<T>(join(legacyDir(), file));
+}
+
+// ─── Session (auth cookies) ─────────────────────────────────────
+
+export function saveSession(cookies: SessionCookies): void {
+	ensureDir(configDir());
+	const path = sessionPath();
+	writeFileSync(path, JSON.stringify(cookies, null, 2), { mode: 0o600 });
+	chmodSync(path, 0o600);
+}
+
+/** Session from `GAELUDYR_KK_FE` (cookie value) if set, else from the session file. */
+export function loadSession(): SessionCookies | null {
+	const fromEnv = process.env.GAELUDYR_KK_FE;
+	if (fromEnv) return { kk_fe: fromEnv };
+	const session = readWithLegacy<SessionCookies>(sessionPath(), "session.json");
+	return session?.kk_fe ? session : null;
+}
+
 export function clearSession(): void {
-	if (existsSync(SESSION_PATH)) writeFileSync(SESSION_PATH, "");
+	for (const path of [sessionPath(), join(legacyDir(), "session.json")]) {
+		if (existsSync(path)) writeFileSync(path, "");
+	}
 }
 
 export function requireSession(): SessionCookies {
 	const session = loadSession();
 	if (!session?.kk_fe) {
-		throw new Error('Not authenticated. Run "gaeludyr login --phone <7-digit>" first.');
+		throw new Error(
+			'Not authenticated. Run "gaeludyr login --phone <7-digit mobile>" first (or set GAELUDYR_KK_FE).',
+		);
 	}
 	return session;
 }
@@ -53,19 +95,16 @@ export function cookieHeader(session: SessionCookies): string {
 // ─── Local cart ─────────────────────────────────────────────────
 
 export function loadCart(): LocalCart {
-	if (!existsSync(CART_PATH)) {
+	const cart = readWithLegacy<LocalCart>(cartPath(), "cart.json");
+	if (!cart || !Array.isArray(cart.items)) {
 		return { items: [], coupon: null, updatedAt: Date.now() };
 	}
-	try {
-		return JSON.parse(readFileSync(CART_PATH, "utf-8")) as LocalCart;
-	} catch {
-		return { items: [], coupon: null, updatedAt: Date.now() };
-	}
+	return cart;
 }
 
 export function saveCart(cart: LocalCart): void {
-	ensureDir();
-	writeFileSync(CART_PATH, JSON.stringify(cart, null, 2));
+	ensureDir(configDir());
+	writeFileSync(cartPath(), JSON.stringify(cart, null, 2));
 }
 
 // ─── Next.js build ID cache ─────────────────────────────────────
@@ -76,18 +115,13 @@ export interface CachedBuildId {
 }
 
 export function loadBuildId(): CachedBuildId | null {
-	if (!existsSync(BUILDID_PATH)) return null;
-	try {
-		return JSON.parse(readFileSync(BUILDID_PATH, "utf-8")) as CachedBuildId;
-	} catch {
-		return null;
-	}
+	return readJson<CachedBuildId>(buildIdPath());
 }
 
 export function saveBuildId(buildId: string): void {
-	ensureDir();
+	ensureDir(cacheDir());
 	const cached: CachedBuildId = { buildId, fetchedAt: Date.now() };
-	writeFileSync(BUILDID_PATH, JSON.stringify(cached, null, 2));
+	writeFileSync(buildIdPath(), JSON.stringify(cached, null, 2));
 }
 
 // ─── Static config ──────────────────────────────────────────────

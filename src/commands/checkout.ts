@@ -1,13 +1,8 @@
+import { type ShippingQuery, shippingOptions } from "../lib/checkout.ts";
 import { GaeludyrClient } from "../lib/client.ts";
-import { loadCart } from "../lib/config.ts";
 import { formatPrice, log, output, outputError } from "../lib/output.ts";
 
-export interface ShippingOpts {
-	postcode: string;
-	street: string;
-	city: string;
-	country?: string;
-	ssn?: string;
+export interface ShippingOpts extends ShippingQuery {
 	json?: boolean;
 }
 
@@ -17,24 +12,7 @@ export async function checkoutShipping(opts: ShippingOpts): Promise<void> {
 			"Usage: gaeludyr checkout shipping --postcode <NNN> --street <addr> --city <name> [--country IS] [--ssn <kennitala>]",
 		);
 	}
-	const client = new GaeludyrClient();
-	const local = loadCart();
-	const profile = await client.getProfile().catch(() => null);
-	const ssn = opts.ssn ?? profile?.user_ssn ?? "";
-
-	const resp = await client.checkoutShipping({
-		cart: local.items,
-		hasPrescriptions: false,
-		prescriptionCart: [],
-		prescriptionCount: 0,
-		destination: {
-			country: opts.country ?? "IS",
-			postcode: opts.postcode,
-			street: opts.street,
-			city: opts.city,
-		},
-		ssn,
-	});
+	const resp = await shippingOptions(opts);
 
 	if (opts.json) {
 		output(resp);
@@ -49,8 +27,7 @@ export async function checkoutShipping(opts: ShippingOpts): Promise<void> {
 }
 
 export async function checkoutPayment(opts: { json?: boolean }): Promise<void> {
-	const client = new GaeludyrClient();
-	const methods = await client.checkoutPayment();
+	const methods = await new GaeludyrClient().checkoutPayment();
 	if (opts.json) {
 		output({ count: methods.length, methods });
 		return;

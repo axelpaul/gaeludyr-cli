@@ -1,4 +1,4 @@
-import { BASE_URL, USER_AGENT, cookieHeader, requireSession } from "./config.ts";
+import { BASE_URL, cookieHeader, loadSession, requireSession, USER_AGENT } from "./config.ts";
 import type {
 	CartRequest,
 	CartResponse,
@@ -22,18 +22,18 @@ export class ApiError extends Error {
 	}
 }
 
+/**
+ * Client for gaeludyr.is `/api/*`. The session cookie is sent whenever one is
+ * available; endpoints marked `auth` fail fast without one. Endpoints such as
+ * postcode lookup and Dropp locations may also work anonymously.
+ */
 export class GaeludyrClient {
-	private cookie: string;
-
-	constructor() {
-		this.cookie = cookieHeader(requireSession());
-	}
-
-	private headers(extra: Record<string, string> = {}): Record<string, string> {
+	private headers(auth: boolean, extra: Record<string, string> = {}): Record<string, string> {
+		const session = auth ? requireSession() : loadSession();
 		return {
 			accept: "application/json",
 			"user-agent": USER_AGENT,
-			cookie: this.cookie,
+			...(session ? { cookie: cookieHeader(session) } : {}),
 			referer: `${BASE_URL}/`,
 			...extra,
 		};
@@ -44,6 +44,7 @@ export class GaeludyrClient {
 		path: string,
 		body?: unknown,
 		query?: Record<string, string | number>,
+		auth = false,
 	): Promise<T> {
 		const qs = query
 			? `?${Object.entries(query)
@@ -52,11 +53,20 @@ export class GaeludyrClient {
 			: "";
 		const res = await fetch(`${BASE_URL}${path}${qs}`, {
 			method,
-			headers: this.headers(body ? { "content-type": "application/json", origin: BASE_URL } : {}),
+			headers: this.headers(
+				auth,
+				body ? { "content-type": "application/json", origin: BASE_URL } : {},
+			),
 			body: body ? JSON.stringify(body) : undefined,
 		});
 		if (!res.ok) {
 			const text = await res.text().catch(() => "");
+			if ((res.status === 401 || res.status === 403) && auth) {
+				throw new ApiError(
+					`${method} ${path}: ${res.status} — session missing or expired. Run "gaeludyr login".`,
+					res.status,
+				);
+			}
 			throw new ApiError(`${method} ${path}: ${res.status} ${text.slice(0, 500)}`, res.status);
 		}
 		if (res.status === 204) return undefined as T;
@@ -70,25 +80,35 @@ export class GaeludyrClient {
 	// ─── User ───────────────────────────────────────────────────
 
 	getProfile(): Promise<UserProfile> {
-		return this.request<UserProfile>("GET", "/api/users/me");
+		return this.request<UserProfile>("GET", "/api/users/me", undefined, undefined, true);
 	}
 
 	updateProfile(profile: Partial<UserProfile>): Promise<UserProfile> {
-		return this.request<UserProfile>("PUT", "/api/users/me", profile);
+		return this.request<UserProfile>("PUT", "/api/users/me", profile, undefined, true);
 	}
 
 	getMeta(key: string): Promise<unknown> {
-		return this.request<unknown>("GET", "/api/users/me/meta", undefined, { meta_key: key });
+		return this.request<unknown>("GET", "/api/users/me/meta", undefined, { meta_key: key }, true);
 	}
 
 	setMeta(key: string, value: unknown): Promise<unknown> {
-		return this.request<unknown>("PUT", "/api/users/me/meta", { meta_key: key, meta_value: value });
+		return this.request<unknown>(
+			"PUT",
+			"/api/users/me/meta",
+			{ meta_key: key, meta_value: value },
+			undefined,
+			true,
+		);
 	}
 
 	setPreferredShipping(method: unknown): Promise<{ message: string }> {
-		return this.request<{ message: string }>("PUT", "/api/users/me/preferred-shipping", {
-			preferredShippingMethod: method,
-		});
+		return this.request<{ message: string }>(
+			"PUT",
+			"/api/users/me/preferred-shipping",
+			{ preferredShippingMethod: method },
+			undefined,
+			true,
+		);
 	}
 
 	// ─── Cart ───────────────────────────────────────────────────
@@ -100,7 +120,7 @@ export class GaeludyrClient {
 	// ─── Orders ─────────────────────────────────────────────────
 
 	listOrders(page = 1): Promise<OrderSummary[]> {
-		return this.request<OrderSummary[]>("GET", "/api/orders", undefined, { page });
+		return this.request<OrderSummary[]>("GET", "/api/orders", undefined, { page }, true);
 	}
 
 	// ─── Products ───────────────────────────────────────────────

@@ -1,10 +1,10 @@
 import {
 	BASE_URL,
-	USER_AGENT,
 	cookieHeader,
 	loadBuildId,
 	requireSession,
 	saveBuildId,
+	USER_AGENT,
 } from "./config.ts";
 
 const BUILDID_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -27,7 +27,7 @@ export async function getBuildId(forceRefresh = false): Promise<string> {
 	if (!res.ok) throw new Error(`Failed to fetch ${BASE_URL}/ for buildId discovery: ${res.status}`);
 	const html = await res.text();
 	const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-	if (!match || !match[1]) throw new Error("Could not find __NEXT_DATA__ in page HTML");
+	if (!match?.[1]) throw new Error("Could not find __NEXT_DATA__ in page HTML");
 	let data: { buildId?: string };
 	try {
 		data = JSON.parse(match[1]) as { buildId?: string };

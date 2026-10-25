@@ -1,10 +1,8 @@
-import { GaeludyrClient } from "../lib/client.ts";
-import { fetchSsrData } from "../lib/nextjs.ts";
+import { orderDetail as fetchOrderDetail, listOrders } from "../lib/orders.ts";
 import { formatPrice, log, output, outputError } from "../lib/output.ts";
 
 export async function ordersList(opts: { page?: number; json?: boolean }): Promise<void> {
-	const client = new GaeludyrClient();
-	const orders = await client.listOrders(opts.page ?? 1);
+	const orders = await listOrders(opts.page ?? 1);
 
 	if (opts.json) {
 		output({ page: opts.page ?? 1, count: orders.length, orders });
@@ -25,8 +23,7 @@ export async function ordersList(opts: { page?: number; json?: boolean }): Promi
 
 export async function orderDetail(id: string, opts: { json?: boolean }): Promise<void> {
 	if (!id) outputError("Usage: gaeludyr order <id>");
-	// Order detail lives at the Next.js SSR data route, not /api/orders/{id}
-	const data = await fetchSsrData<unknown>(`/is/minar-sidur/pantanir/${id}.json`);
+	const data = await fetchOrderDetail(id);
 
 	if (opts.json) {
 		output(data);

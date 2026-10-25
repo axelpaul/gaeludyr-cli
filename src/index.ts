@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import pkg from "../package.json" with { type: "json" };
 import { cartAdd, cartClear, cartCoupon, cartRemove, cartSet, cartShow } from "./commands/cart.ts";
 import { checkoutPayment, checkoutShipping } from "./commands/checkout.ts";
 import { dropp } from "./commands/dropp.ts";
@@ -67,6 +68,11 @@ const COMMANDS = [
 		],
 	},
 	{ name: "logout", description: "Clear the cached session.", args: [] },
+	{
+		name: "serve",
+		description: "Start the MCP server on stdio (alias: mcp).",
+		args: [],
+	},
 	{ name: "me", description: "Show authenticated user's profile.", args: [] },
 	{
 		name: "search",
@@ -275,14 +281,15 @@ const COMMANDS = [
 
 function showHelp(): void {
 	if (jsonMode) {
-		output({ name: "gaeludyr-cli", version: "0.1.0", commands: COMMANDS });
+		output({ name: pkg.name, version: pkg.version, commands: COMMANDS });
 		return;
 	}
-	console.log(`gaeludyr-cli v0.1.0 — CLI for gaeludyr.is
+	console.log(`gaeludyr-cli v${pkg.version} — unofficial CLI for gaeludyr.is
 
 Usage: gaeludyr <command> [options]
 
 Commands:
+  serve           Start the MCP server (stdio)
   login           Log in via Audkenni Sim (BFF-proxied)
   logout          Clear the cached session
   me              Show authenticated profile
@@ -299,6 +306,7 @@ Global flags:
   --json          Force JSON output (default when stdout is piped)
   --pretty        Force human-readable output
   --help, -h      Show this help
+  --version, -v   Print version
 
 Examples:
   gaeludyr login --phone <7-digit-mobile>
@@ -308,7 +316,7 @@ Examples:
   gaeludyr cart set --items '[{"id":46685,"qty":2}]'    # replace whole cart in one shot
   echo '[{"id":46685,"qty":2}]' | gaeludyr cart set     # or from stdin
   gaeludyr orders --page 1
-  gaeludyr order 62331
+  gaeludyr order 12345
   gaeludyr checkout shipping --postcode 104 --street "<street address>" --city Reykjavík`);
 }
 
@@ -318,13 +326,18 @@ const command = positional[0];
 const json = hasFlag("json") || (!process.stdout.isTTY && !hasFlag("pretty"));
 
 async function main(): Promise<void> {
+	if (hasFlag("version") || argv[0] === "-v" || command === "version") {
+		console.log(pkg.version);
+		return;
+	}
 	if (!command || command === "help" || hasFlag("help") || argv.includes("-h")) {
 		showHelp();
 		return;
 	}
 
 	switch (command) {
-		case "serve": {
+		case "serve":
+		case "mcp": {
 			const { serve } = await import("./mcp/server.ts");
 			await serve();
 			break;
