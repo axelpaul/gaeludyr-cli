@@ -1,3 +1,4 @@
+import { requireValidAuth } from "../lib/auth-state.ts";
 import { GaeludyrClient } from "../lib/client.ts";
 import { loadCart, saveCart } from "../lib/config.ts";
 import { scoreProduct, topMatches } from "../lib/fuzzy.ts";
@@ -18,6 +19,7 @@ async function pushAndShow(
 	jsonOut: boolean,
 	extra: Record<string, unknown> = {},
 ): Promise<CartResponse> {
+	await requireValidAuth("cart sync");
 	const client = new GaeludyrClient();
 	const resp = await client.postCart({ cart: local.items, coupon: local.coupon });
 	local.updatedAt = Date.now();
