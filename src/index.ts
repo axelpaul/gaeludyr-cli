@@ -2,6 +2,7 @@
 
 import { cartAdd, cartClear, cartCoupon, cartRemove, cartSet, cartShow } from "./commands/cart.ts";
 import { checkoutPayment, checkoutShipping } from "./commands/checkout.ts";
+import { doctor } from "./commands/doctor.ts";
 import { dropp } from "./commands/dropp.ts";
 import { login } from "./commands/login.ts";
 import { logout } from "./commands/logout.ts";
@@ -67,6 +68,7 @@ const COMMANDS = [
 		],
 	},
 	{ name: "logout", description: "Clear the cached session.", args: [] },
+	{ name: "doctor", description: "Check cached auth/session state.", args: [] },
 	{ name: "me", description: "Show authenticated user's profile.", args: [] },
 	{
 		name: "search",
@@ -285,6 +287,7 @@ Usage: gaeludyr <command> [options]
 Commands:
   login           Log in via Audkenni Sim (BFF-proxied)
   logout          Clear the cached session
+  doctor          Check cached auth/session state
   me              Show authenticated profile
   search          Search the product catalog
   product <slug>  Show product stock/pricing
@@ -338,6 +341,9 @@ async function main(): Promise<void> {
 		}
 		case "logout":
 			logout({ json });
+			break;
+		case "doctor":
+			await doctor({ json });
 			break;
 		case "me":
 			await me({ json });
