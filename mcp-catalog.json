@@ -1,0 +1,140 @@
+{
+  "$schema": "https://mcp.axelpaul.is/catalog.schema.json",
+  "id": "gaeludyr",
+  "repo": "axelpaul/gaeludyr-cli",
+  "name": "Gæludýr",
+  "service": "Gæludýr.is",
+  "serviceUrl": "https://www.gaeludyr.is",
+  "tagline": "Product search, shopping carts and orders at Gæludýr.is",
+  "description": "Find products at Gæludýr.is, check prices and stock, and calculate cart totals with shipping costs. Sign in with Auðkenni to view your orders. Payment takes place on the shop’s website, not through the tool.",
+  "examples": [
+    "Do they have grain-free cat food in stock?",
+    "Put two bags of it in my cart.",
+    "Where are the nearest Dropp pickup points?"
+  ],
+  "category": "Shopping",
+  "keywords": [
+    "pet",
+    "dýr",
+    "hundur",
+    "köttur",
+    "dog",
+    "cat"
+  ],
+  "auth": "none for catalogue; phone (Auðkenni) for account",
+  "binaries": true,
+  "tools": [
+    {
+      "name": "search",
+      "write": false,
+      "description": "Search the public catalogue by query, category and/or brand"
+    },
+    {
+      "name": "product",
+      "write": false,
+      "description": "Stock and price for a product slug"
+    },
+    {
+      "name": "postcode",
+      "write": false,
+      "description": "Icelandic postcode lookup"
+    },
+    {
+      "name": "dropp_locations",
+      "write": false,
+      "description": "Dropp parcel pickup locations"
+    },
+    {
+      "name": "me",
+      "write": false,
+      "description": "Your profile, addresses and preferred shipping (login)"
+    },
+    {
+      "name": "orders",
+      "write": false,
+      "description": "List your orders (login)"
+    },
+    {
+      "name": "order",
+      "write": false,
+      "description": "Detail for one order (login)"
+    },
+    {
+      "name": "cart_view",
+      "write": false,
+      "description": "Current cart with server-computed totals"
+    },
+    {
+      "name": "checkout_shipping",
+      "write": false,
+      "description": "Shipping methods and costs for the cart to a destination"
+    },
+    {
+      "name": "payment_methods",
+      "write": false,
+      "description": "Payment methods offered at checkout"
+    },
+    {
+      "name": "cart_add",
+      "write": true,
+      "description": "Add a product by ID, slug or name"
+    },
+    {
+      "name": "cart_remove",
+      "write": true,
+      "description": "Remove a product from the cart"
+    },
+    {
+      "name": "cart_set",
+      "write": true,
+      "description": "Replace the whole cart"
+    },
+    {
+      "name": "cart_clear",
+      "write": true,
+      "description": "Empty the cart"
+    },
+    {
+      "name": "cart_coupon",
+      "write": true,
+      "description": "Apply or remove a coupon"
+    }
+  ],
+  "commands": [
+    "gaeludyr login --phone <mobile>",
+    "gaeludyr me",
+    "gaeludyr search \"happy cat\" --in-stock",
+    "gaeludyr product <slug>",
+    "gaeludyr cart add 46685 --qty 2",
+    "gaeludyr cart",
+    "gaeludyr orders",
+    "gaeludyr order <id>",
+    "gaeludyr checkout shipping --postcode 101 --street \"Dæmigata 1\" --city Reykjavík",
+    "gaeludyr dropp --near kringlan",
+    "gaeludyr serve"
+  ],
+  "envVars": [
+    {
+      "name": "GAELUDYR_MCP_ENABLE_WRITES",
+      "description": "Set to 1 to expose the cart mutation tools in the MCP server"
+    },
+    {
+      "name": "GAELUDYR_KK_FE",
+      "description": "Session cookie value to use instead of the saved login"
+    },
+    {
+      "name": "GAELUDYR_CONFIG_DIR",
+      "description": "Override the config directory (default ~/.config/gaeludyr-cli)"
+    }
+  ],
+  "writesEnvVar": "GAELUDYR_MCP_ENABLE_WRITES",
+  "is": {
+    "tagline": "Vöruleit, vörukörfur og pantanir hjá Gæludýr.is",
+    "description": "Finndu vörur hjá Gæludýr.is, skoðaðu verð og birgðastöðu og reiknaðu heildarverð körfu með sendingarkostnaði. Með innskráningu í gegnum Auðkenni geturðu líka skoðað pantanirnar þínar. Greiðsla fer fram á vef verslunarinnar, ekki í tólinu.",
+    "examples": [
+      "Er til kornlaust kattafóður á lager?",
+      "Settu tvo poka af því í körfuna.",
+      "Hvaða afhendingarstaðir Dropp eru næst mér?"
+    ]
+  }
+}
