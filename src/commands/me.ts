@@ -1,7 +1,9 @@
+import { requireValidAuth } from "../lib/auth-state.ts";
 import { GaeludyrClient } from "../lib/client.ts";
 import { log, output } from "../lib/output.ts";
 
 export async function me(opts: { json?: boolean }): Promise<void> {
+	await requireValidAuth("profile lookup");
 	const client = new GaeludyrClient();
 	const profile = await client.getProfile();
 

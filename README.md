@@ -1,5 +1,7 @@
 # gaeludyr-cli
 
+[MCP setup and client configuration](MCP.md)
+
 Command-line client for [gaeludyr.is](https://www.gaeludyr.is), an Icelandic pet supply store. Built with Bun + TypeScript. Works for humans (pretty terminal output) and for agents (JSON when piped, plus a machine-readable command schema via `gaeludyr help --json`).
 
 ## Install
